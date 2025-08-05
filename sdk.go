@@ -2,12 +2,12 @@ package sdk
 
 import (
 	"context"
-	"delve_sdk/plugin_comms"
 	"flag"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/PortableSheep/delve_sdk/plugin_comms"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

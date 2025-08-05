@@ -1,4 +1,4 @@
-module delve_sdk
+module github.com/PortableSheep/delve_sdk
 
 go 1.24.2
 
