@@ -28,22 +28,28 @@ func Start(pluginInfo *plugin_comms.RegisterRequest) (*Plugin, error) {
 		return nil, fmt.Errorf("host gRPC port not provided via --grpc-port flag")
 	}
 
-	// Establish connection
-	conn, err := grpc.Dial(
+	// Create a context with a timeout for the dial operation.
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer dialCancel()
+
+	// Establish connection with a timeout and blocking.
+	conn, err := grpc.DialContext(
+		dialCtx,
 		fmt.Sprintf("127.0.0.1:%d", *grpcPort),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), // Block until the connection is established
+		grpc.WithBlock(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to host: %w", err)
+		return nil, fmt.Errorf("failed to connect to host within timeout: %w", err)
 	}
 
 	client := plugin_comms.NewPluginManagerClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
+	// The registration call itself can have a shorter timeout.
+	registerCtx, registerCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer registerCancel()
 
 	// Register with the host
-	res, err := client.Register(ctx, pluginInfo)
+	res, err := client.Register(registerCtx, pluginInfo)
 	if err != nil {
 		_ = conn.Close() // Clean up connection on failure
 		return nil, fmt.Errorf("failed to register with host: %w", err)
