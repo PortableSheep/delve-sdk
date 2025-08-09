@@ -29,7 +29,11 @@ func Start(pluginInfo *plugin_comms.RegisterRequest) (*Plugin, error) {
 	}
 
 	// Establish connection
-	conn, err := grpc.Dial(fmt.Sprintf("127.0.0.1:%d", *grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(
+		fmt.Sprintf("127.0.0.1:%d", *grpcPort),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(), // Block until the connection is established
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to host: %w", err)
 	}
