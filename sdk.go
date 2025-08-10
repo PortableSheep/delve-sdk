@@ -1,75 +1,95 @@
 package sdk
 
 import (
-	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
-	"time"
+	"net/url"
 
-	"github.com/PortableSheep/delve_sdk/plugin_comms"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"github.com/gorilla/websocket"
 )
 
-// Plugin represents a third-party plugin.
+// Plugin represents a connection to the host application.
 type Plugin struct {
-	client plugin_comms.PluginManagerClient
-	conn   *grpc.ClientConn
+	conn *websocket.Conn
 }
 
-// Start connects to the host application, registers the plugin, and returns a client for further communication.
-// It handles parsing the required '--grpc-port' flag from the host.
-func Start(pluginInfo *plugin_comms.RegisterRequest) (*Plugin, error) {
-	grpcPort := flag.Int("grpc-port", 0, "gRPC server port of the main application")
+// RegisterRequest defines the structure for the registration request.
+type RegisterRequest struct {
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	UiComponentPath  string `json:"ui_component_path"`
+	CustomElementTag string `json:"custom_element_tag"`
+}
+
+// Start establishes a WebSocket connection with the host and registers the plugin.
+func Start(pluginInfo *RegisterRequest) (*Plugin, error) {
+	wsPort := flag.Int("ws-port", 0, "WebSocket server port of the main application")
 	flag.Parse()
 
-	if *grpcPort == 0 {
-		return nil, fmt.Errorf("host gRPC port not provided via --grpc-port flag")
+	if *wsPort == 0 {
+		return nil, fmt.Errorf("host WebSocket port not provided via --ws-port flag")
 	}
 
-	// Create a context with a timeout for the dial operation.
-	dialCtx, dialCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer dialCancel()
+	// Construct the WebSocket URL.
+	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("127.0.0.1:%d", *wsPort), Path: "/ws"}
+	log.Printf("Connecting to host at %s", u.String())
 
-	// Establish connection with a timeout and blocking.
-	conn, err := grpc.DialContext(
-		dialCtx,
-		fmt.Sprintf("127.0.0.1:%d", *grpcPort),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-	)
+	// Dial the host.
+	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to host within timeout: %w", err)
+		return nil, fmt.Errorf("failed to connect to host WebSocket: %w", err)
 	}
 
-	client := plugin_comms.NewPluginManagerClient(conn)
-	// The registration call itself can have a shorter timeout.
-	registerCtx, registerCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer registerCancel()
-
-	// Register with the host
-	res, err := client.Register(registerCtx, pluginInfo)
+	// Marshal the registration info.
+	payload, err := json.Marshal(pluginInfo)
 	if err != nil {
-		_ = conn.Close() // Clean up connection on failure
-		return nil, fmt.Errorf("failed to register with host: %w", err)
+		conn.Close()
+		return nil, fmt.Errorf("failed to marshal plugin info: %w", err)
 	}
 
-	if !res.Success {
-		_ = conn.Close() // Clean up connection on failure
-		return nil, fmt.Errorf("registration rejected by host: %s", res.Message)
+	// Send the registration message.
+	if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to send registration message: %w", err)
 	}
 
-	log.Printf("Plugin successfully registered with host: %s", res.Message)
+	log.Println("Plugin successfully sent registration request.")
 
-	return &Plugin{
-		client: client,
-		conn:   conn,
-	}, nil
+	return &Plugin{conn: conn}, nil
 }
 
+// Listen runs a loop to process incoming messages from the host.
+// It takes a handler function to be executed for each message.
+func (p *Plugin) Listen(handler func(messageType int, data []byte)) {
+	// Ensure the connection is closed when the listener exits.
+	defer p.conn.Close()
+
+	for {
+		messageType, data, err := p.conn.ReadMessage()
+		if err != nil {
+			// Check for a clean close from the server.
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				log.Println("Host closed the connection cleanly.")
+			} else {
+				log.Printf("Error reading message from host: %v", err)
+			}
+			break // Exit loop on any error.
+		}
+		// Execute the plugin-defined handler for the message.
+		handler(messageType, data)
+	}
+}
+
+// Close sends a close message and shuts down the connection.
 func (p *Plugin) Close() {
 	if p.conn != nil {
-		_ = p.conn.Close()
+		// Politely tell the server we're closing the connection.
+		err := p.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		if err != nil {
+			log.Printf("Error sending close message: %v", err)
+		}
+		p.conn.Close()
 	}
 }
