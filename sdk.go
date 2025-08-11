@@ -16,11 +16,12 @@ type Plugin struct {
 }
 
 // RegisterRequest defines the structure for the registration request.
+// The JSON tags MUST match what the host application expects.
 type RegisterRequest struct {
 	Name             string `json:"name"`
 	Description      string `json:"description"`
-	UiComponentPath  string `json:"ui_component_path"`
-	CustomElementTag string `json:"custom_element_tag"`
+	UiComponentPath  string `json:"uiComponentPath"`
+	CustomElementTag string `json:"customElementTag"`
 }
 
 // Start establishes a WebSocket connection with the host and registers the plugin.
