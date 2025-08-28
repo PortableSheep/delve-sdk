@@ -131,6 +131,68 @@ type RegisterRequest struct {
 - **UIComponentPath**: Path to frontend JavaScript file
 - **Icon**: Emoji or icon for UI display
 
+### Plugin Metadata (plugin.json)
+
+For plugins distributed through the registry, create a `plugin.json` file with additional metadata:
+
+```json
+{
+  "info": {
+    "id": "my-plugin",
+    "name": "My Plugin",
+    "version": "v1.0.0",
+    "description": "A comprehensive plugin description",
+    "author": "Your Name",
+    "license": "MIT",
+    "homepage": "https://github.com/user/plugin-repo",
+    "repository": "https://github.com/user/plugin-repo",
+    "icon": "🚀",
+    "screenshots": [
+      "https://raw.githubusercontent.com/user/plugin-repo/main/screenshots/overview.png",
+      "https://raw.githubusercontent.com/user/plugin-repo/main/screenshots/settings.png",
+      "https://raw.githubusercontent.com/user/plugin-repo/main/screenshots/features.png"
+    ],
+    "tags": ["productivity", "development", "ui"],
+    "category": "development-tools",
+    "min_delve_version": "v0.1.0"
+  },
+  "runtime": {
+    "executable": "my-plugin",
+    "frontend_entry": "frontend/component.js",
+    "permissions": ["network.http", "storage.local"]
+  }
+}
+```
+
+#### Screenshots
+
+Screenshots help users understand your plugin's functionality:
+
+**Best Practices:**
+- Use PNG format for best quality
+- Minimum resolution: 1200x800 pixels
+- Maximum file size: 500KB per image
+- Show real data when possible (avoid empty states)
+- Include 2-4 screenshots showing key features
+- Use consistent browser/window sizing
+
+**Screenshot URLs:**
+- Host screenshots in your plugin repository
+- Use GitHub raw URLs for reliability
+- Example: `https://raw.githubusercontent.com/user/repo/main/screenshots/image.png`
+
+**What to Screenshot:**
+1. **Main interface** - Primary plugin view
+2. **Key features** - Important functionality in action
+3. **Settings/Configuration** - Plugin configuration options
+4. **Different states** - Various plugin modes or views
+
+Screenshots are displayed in:
+- Plugin Manager (Delve application)
+- Plugin Store interface
+- Registry website
+- Plugin documentation
+
 ### Core Methods
 
 #### `Start(pluginInfo *RegisterRequest) (*Plugin, error)`
@@ -312,6 +374,33 @@ plugin.Listen(func(messageType int, data []byte) {
 3. **Heartbeat**: Regular health checks with host
 4. **Shutdown**: Graceful cleanup when connection lost or timeout
 5. **State Save**: Critical data persisted before exit
+
+## Publishing to Registry
+
+To make your plugin available through the Delve Plugin Registry:
+
+1. **Create plugin.json** with complete metadata including screenshots
+2. **Add screenshots** to a `screenshots/` directory in your repository
+3. **Submit to registry** via pull request or registry submission process
+4. **Include releases** with compiled binaries for supported platforms
+
+**Directory Structure:**
+```
+my-plugin/
+├── plugin.json           # Plugin metadata
+├── main.go              # Plugin source code
+├── frontend/
+│   └── component.js     # Frontend component
+├── screenshots/         # Plugin screenshots
+│   ├── overview.png
+│   ├── settings.png
+│   └── features.png
+└── releases/           # Compiled binaries
+    └── v1.0.0/
+        ├── my-plugin-linux-amd64
+        ├── my-plugin-darwin-amd64
+        └── my-plugin-windows-amd64.exe
+```
 
 ## Frontend Integration
 
