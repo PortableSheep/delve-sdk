@@ -156,11 +156,12 @@ For plugins distributed through the registry, create a `plugin.json` file with a
     "category": "development-tools",
     "min_delve_version": "v0.1.0"
   },
-  "runtime": {
-    "executable": "my-plugin",
-    "frontend_entry": "frontend/component.js",
-    "permissions": ["network.http", "storage.local"]
-  }
+    "runtime": {
+        "executable": "my-plugin"
+    },
+    "frontend": {
+        "entry": "frontend/component.js"
+    }
 }
 ```
 
