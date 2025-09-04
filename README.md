@@ -108,6 +108,35 @@ func main() {
 }
 ```
 
+## Manifest (plugin.json) basics
+
+Each plugin should include a `plugin.json` manifest at its root. Key fields:
+
+- info: id, name, version, description, icon
+- frontend.entry or runtime.frontend_entry: path to your web component bundle (relative to plugin root), e.g. `frontend/component.js`
+- runtime.executable: plugin binary name (if applicable)
+- config_schema: simple JSON-schema-like config used by the host settings UI
+
+See `plugin.schema.json` in this repo for the full schema. At minimum:
+
+{
+    "info": { "id": "my-plugin", "name": "My Plugin", "version": "v1.0.0" },
+    "frontend": { "entry": "frontend/component.js" },
+    "runtime": { "executable": "my-plugin" }
+}
+
+## Command handling (host RPC)
+
+Plugins can handle commands contributed via `plugin.json -> contributes.commands`.
+
+- Register one handler:
+    `plugin.OnCommand("my.command", func(ctx context.Context, args []any) (any, error) { /* ... */ })`
+- Or many at once:
+    `plugin.RegisterCommands(sdk.CommandMap{"my.command": handler})`
+
+Return any JSON-serializable value. Errors are sent back to the host.
+
+
 ## API Reference
 
 ### Plugin Registration

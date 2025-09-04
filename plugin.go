@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -36,6 +37,9 @@ type Plugin struct {
 	heartbeatDone   chan struct{}
 	lastHeartbeat   time.Time
 	heartbeatMutex  sync.RWMutex
+	// command handling
+	commandHandlers map[string]CommandHandler
+	commandMutex    sync.RWMutex
 }
 
 // Start establishes a WebSocket connection with the host and registers the plugin.
@@ -78,9 +82,21 @@ func Start(pluginInfo *RegisterRequest) (*Plugin, error) {
 		heartbeatStop:   make(chan struct{}),
 		heartbeatDone:   make(chan struct{}),
 		lastHeartbeat:   time.Now(),
+		commandHandlers: make(map[string]CommandHandler),
 	}
 
 	return plugin, nil
+}
+
+// CommandHandler is a function that handles a command from the host.
+// args are deserialized JSON values. Return value must be JSON-serializable.
+type CommandHandler func(ctx context.Context, args []any) (any, error)
+
+// OnCommand registers a handler for a given command ID.
+func (p *Plugin) OnCommand(command string, handler CommandHandler) {
+	p.commandMutex.Lock()
+	defer p.commandMutex.Unlock()
+	p.commandHandlers[command] = handler
 }
 
 // SetStateManager sets the state manager for graceful shutdown
@@ -194,11 +210,11 @@ func (p *Plugin) Listen(handler func(messageType int, data []byte)) {
 			}
 		}
 
-		// Check if this is a storage response
+		// Intercept structured envelopes (commands, storage, etc.)
 		if messageType == websocket.TextMessage {
+			// 1) storage response
 			var response StorageResponse
 			if err := json.Unmarshal(data, &response); err == nil && response.ID != "" {
-				// This is a storage response
 				p.requestsMutex.RLock()
 				responseChan, exists := p.pendingRequests[response.ID]
 				p.requestsMutex.RUnlock()
@@ -212,10 +228,61 @@ func (p *Plugin) Listen(handler func(messageType int, data []byte)) {
 					continue
 				}
 			}
+
+			// 2) command execute envelope
+			var env map[string]any
+			if err := json.Unmarshal(data, &env); err == nil {
+				if t, ok := env["type"].(string); ok && t == "command/execute" {
+					id, _ := env["id"].(string)
+					cmdID, _ := env["command"].(string)
+					rawArgs, _ := env["args"].([]any)
+
+					// Find handler
+					p.commandMutex.RLock()
+					h, exists := p.commandHandlers[cmdID]
+					p.commandMutex.RUnlock()
+
+					var result any
+					var errStr string
+					success := true
+					if !exists {
+						success = false
+						errStr = "unknown command"
+					} else {
+						// Execute handler with a background context
+						ctx := context.Background()
+						res, err := h(ctx, rawArgs)
+						if err != nil {
+							success = false
+							errStr = err.Error()
+						} else {
+							result = res
+						}
+					}
+
+					reply := map[string]any{
+						"type":    "command/result",
+						"id":      id,
+						"success": success,
+					}
+					if errStr != "" {
+						reply["error"] = errStr
+					}
+					if result != nil {
+						reply["result"] = result
+					}
+					if b, err := json.Marshal(reply); err == nil {
+						_ = p.conn.WriteMessage(websocket.TextMessage, b)
+					}
+					continue
+				}
+			}
 		}
 
 		// Execute the plugin-defined handler for the message.
-		handler(messageType, data)
+		if handler != nil {
+			handler(messageType, data)
+		}
 	}
 }
 

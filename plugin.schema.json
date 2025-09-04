@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/PortableSheep/plugin-sdk/plugin.schema.json",
+  "title": "Delve Plugin Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "info": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "description": { "type": "string" },
+        "author": { "type": "string" },
+        "license": { "type": "string" },
+        "homepage": { "type": "string" },
+        "repository": { "type": "string" },
+        "documentation": { "type": "string" },
+        "icon": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "category": { "type": "string" },
+        "min_delve_version": { "type": "string" },
+        "supported_platforms": { "type": "array", "items": { "type": "string" } },
+        "supported_architectures": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "name", "version"]
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "delve": { "type": "string" } }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "executable": { "type": "string" },
+        "frontend_entry": { "type": "string" },
+        "frontend_fallback": { "type": "string" },
+        "permissions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "entry": { "type": "string" },
+        "csp": { "type": "string" }
+      }
+    },
+    "activationEvents": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Events that should activate the plugin (e.g., onStartupFinished, onView:xyz, onCommand:abc)"
+    },
+    "contributes": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string" },
+              "title": { "type": "string" },
+              "category": { "type": "string" },
+              "icon": { "type": "string" }
+            },
+            "required": ["command", "title"]
+          }
+        },
+        "views": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "menus": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "JSON Schema partial for settings UI"
+        },
+        "keybindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string" },
+              "key": { "type": "string" },
+              "when": { "type": "string" }
+            },
+            "required": ["command", "key"]
+          }
+        }
+      }
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Legacy per-plugin configuration schema; still supported"
+    }
+  },
+  "required": ["info"],
+  "examples": [
+    {
+      "info": { "id": "github-dashboard", "name": "GitHub Dashboard", "version": "v1.0.3" },
+      "engines": { "delve": ">=0.4.0" },
+      "activationEvents": ["onView:githubDashboard", "onCommand:github.refresh"],
+      "frontend": { "entry": "frontend/component.js" },
+      "runtime": { "executable": "github-dashboard" },
+      "contributes": {
+        "commands": [
+          { "command": "github.refresh", "title": "Refresh GitHub Data", "category": "GitHub" }
+        ],
+        "configuration": {
+          "title": "GitHub",
+          "properties": {
+            "github.organization": { "type": "string", "default": "" }
+          }
+        }
+      }
+    }
+  ]
+}
