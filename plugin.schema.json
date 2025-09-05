@@ -20,7 +20,8 @@
         "documentation": { "type": "string" },
         "icon": { "type": "string" },
         "tags": { "type": "array", "items": { "type": "string" } },
-        "category": { "type": "string" },
+  "category": { "type": "string" },
+  "type": { "type": "string", "enum": ["ui", "theme", "service"], "description": "Optional plugin type classification. 'ui' (default) shows in sidebar, 'theme' contributes only theming, 'service' runs background functionality." },
         "min_delve_version": { "type": "string" },
         "supported_platforms": { "type": "array", "items": { "type": "string" } },
         "supported_architectures": { "type": "array", "items": { "type": "string" } }
@@ -79,6 +80,43 @@
         "menus": {
           "type": "object",
           "additionalProperties": true
+        },
+        "themes": {
+          "type": "array",
+          "description": "Theme definitions contributed by this plugin.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "uiTheme": { "type": "string", "enum": ["light", "dark"], "description": "Theme variant classification" },
+              "css": { "type": "string", "description": "Path to a CSS file relative to plugin root that defines CSS variables or styles." },
+              "extraCss": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Additional CSS files to load (relative to plugin root), applied after 'css'."
+              },
+              "variables": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Inline CSS variables to apply, e.g. { \"--bg-color\": \"#fff\" }" },
+              "componentVariables": {
+                "type": "object",
+                "description": "Scoped CSS variable overrides per UI component. Keys are known component areas (e.g., 'sidebar', 'header', 'main', 'card', 'panel', 'button', 'input'), values are maps of CSS variable names to values.",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                },
+                "examples": [
+                  {
+                    "sidebar": { "--sidebar-bg": "#0b0b12", "--sidebar-border": "#1f2230" },
+                    "header": { "--header-bg": "rgba(20,20,30,0.6)", "--header-border": "#26283a" },
+                    "card": { "--card-bg": "#12121a", "--card-border": "#232535" }
+                  }
+                ]
+              },
+              "preview": { "type": "string", "description": "Optional preview image path" },
+              "default": { "type": "boolean", "description": "If true, prefer this theme when plugin is installed" }
+            },
+            "required": ["id", "label"]
+          }
         },
         "configuration": {
           "type": "object",
