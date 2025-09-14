@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -172,10 +173,10 @@ func (p *Plugin) gracefulShutdown(reason string) {
 	// Close the connection
 	p.Close()
 
-	// Exit the process
+	// Exit the process gracefully
 	log.Println("Plugin shutting down gracefully")
 	time.Sleep(100 * time.Millisecond) // Give logs time to flush
-	panic("Graceful shutdown")         // This will be caught by the plugin's main loop
+	os.Exit(0)                         // Clean exit instead of panic
 }
 
 // Listen runs a loop to process incoming messages from the host.
