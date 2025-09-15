@@ -40,7 +40,7 @@
         "executable": { "type": "string" },
         "frontend_entry": { "type": "string" },
         "frontend_fallback": { "type": "string" },
-        "permissions": { "type": "array", "items": { "type": "string" } }
+            "permissions": { "type": "array", "items": { "type": "string" }, "description": "Permission-like capability flags requested by the plugin (e.g., globalHotkeys, screenCapture)." }
       }
     },
     "frontend": {
@@ -131,6 +131,19 @@
               "command": { "type": "string" },
               "key": { "type": "string" },
               "when": { "type": "string" }
+            },
+            "required": ["command", "key"]
+          }
+        },
+        "globalHotkeys": {
+          "type": "array",
+          "description": "System-wide hotkeys the host should register. Each triggers a command for the plugin even when the app is unfocused.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string" },
+              "key": { "type": "string", "description": "Accelerator format, e.g. Cmd+Shift+9" },
+              "when": { "type": "string", "description": "(reserved) future conditional context" }
             },
             "required": ["command", "key"]
           }

@@ -30,6 +30,7 @@ type StateManager interface {
 type Plugin struct {
 	conn            *websocket.Conn
 	pendingRequests map[string]chan StorageResponse
+	hostPending     map[string]chan HostResponse
 	requestsMutex   sync.RWMutex
 	requestCounter  int
 	counterMutex    sync.Mutex
@@ -41,6 +42,29 @@ type Plugin struct {
 	// command handling
 	commandHandlers map[string]CommandHandler
 	commandMutex    sync.RWMutex
+	// event handling
+	eventHandlers map[string][]func(any)
+	eventMutex    sync.RWMutex
+}
+
+// Emit sends an arbitrary event envelope to the host. The host can choose to
+// broadcast this to frontend listeners for the plugin UI. The envelope shape:
+// {"type":"event","event":"<eventName>","plugin":"<pluginName>","data":<payload>}
+// Data must be JSON-serializable.
+func (p *Plugin) Emit(event string, payload any) error {
+	if p == nil || p.conn == nil {
+		return fmt.Errorf("plugin connection not initialised")
+	}
+	env := map[string]any{
+		"type":  "event",
+		"event": event,
+		"data":  payload,
+	}
+	b, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return p.conn.WriteMessage(websocket.TextMessage, b)
 }
 
 // Start establishes a WebSocket connection with the host and registers the plugin.
@@ -80,10 +104,12 @@ func Start(pluginInfo *RegisterRequest) (*Plugin, error) {
 	plugin := &Plugin{
 		conn:            conn,
 		pendingRequests: make(map[string]chan StorageResponse),
+		hostPending:     make(map[string]chan HostResponse),
 		heartbeatStop:   make(chan struct{}),
 		heartbeatDone:   make(chan struct{}),
 		lastHeartbeat:   time.Now(),
 		commandHandlers: make(map[string]CommandHandler),
+		eventHandlers:   make(map[string][]func(any)),
 	}
 
 	return plugin, nil
@@ -93,12 +119,24 @@ func Start(pluginInfo *RegisterRequest) (*Plugin, error) {
 // args are deserialized JSON values. Return value must be JSON-serializable.
 type CommandHandler func(ctx context.Context, args []any) (any, error)
 
+// CommandMap convenience for bulk registration
+
 // OnCommand registers a handler for a given command ID.
 func (p *Plugin) OnCommand(command string, handler CommandHandler) {
 	p.commandMutex.Lock()
 	defer p.commandMutex.Unlock()
 	p.commandHandlers[command] = handler
 }
+
+// OnEvent registers a callback for a named event emitted by the plugin (loopback)
+// or broadcast by host to the plugin (future use). Multiple handlers may be registered.
+func (p *Plugin) OnEvent(event string, handler func(any)) {
+	p.eventMutex.Lock()
+	defer p.eventMutex.Unlock()
+	p.eventHandlers[event] = append(p.eventHandlers[event], handler)
+}
+
+// RegisterCommands registers multiple commands at once.
 
 // SetStateManager sets the state manager for graceful shutdown
 func (p *Plugin) SetStateManager(sm StateManager) {
@@ -230,7 +268,40 @@ func (p *Plugin) Listen(handler func(messageType int, data []byte)) {
 				}
 			}
 
-			// 2) command execute envelope
+			// 1b) host response
+			var hResp HostResponse
+			if err := json.Unmarshal(data, &hResp); err == nil && hResp.ID != "" && hResp.Type == "host/response" {
+				p.requestsMutex.RLock()
+				hch, exists := p.hostPending[hResp.ID]
+				p.requestsMutex.RUnlock()
+				if exists {
+					select {
+					case hch <- hResp:
+					case <-time.After(time.Second):
+						log.Printf("Warning: Host response channel timeout for request %s", hResp.ID)
+					}
+					continue
+				}
+			}
+
+			// 2) event envelope (loopback or broadcast)
+			var evEnv struct {
+				Type  string `json:"type"`
+				Event string `json:"event"`
+				Data  any    `json:"data"`
+			}
+			if err := json.Unmarshal(data, &evEnv); err == nil && evEnv.Type == "event" && evEnv.Event != "" {
+				p.eventMutex.RLock()
+				handlers := p.eventHandlers[evEnv.Event]
+				p.eventMutex.RUnlock()
+				for _, h := range handlers {
+					go h(evEnv.Data)
+				}
+				// continue to next frame (no further processing required)
+				continue
+			}
+
+			// 3) command execute envelope
 			var env map[string]any
 			if err := json.Unmarshal(data, &env); err == nil {
 				if t, ok := env["type"].(string); ok && t == "command/execute" {
