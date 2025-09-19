@@ -1,256 +1,448 @@
-# Delve Plugin SDK
+# Enhanced Delve Plugin SDK v2.0
 
-A Go SDK for creating plugins that connect to the Delve host application with built-in heartbeat monitoring, state management, and graceful shutdown capabilities.
+The Enhanced Delve Plugin SDK provides comprehensive tools and features for building, securing, and managing plugins for the Delve application platform.
 
-## Features
+## 🚀 Features
 
-- **WebSocket Connection**: Reliable connection to Delve host
-- **Heartbeat Monitoring**: Automatic health checks with graceful shutdown
-- **State Management**: Plugin state persistence and recovery
-- **Storage API**: Access to plugin-specific storage
-- **Graceful Shutdown**: Clean shutdown with state saving
-- **Connection Recovery**: Automatic reconnection handling
+### Core Enhancements
+- **Enhanced Plugin Registry** - Advanced search, filtering, and metadata
+- **Security & Sandboxing** - Comprehensive security policies and isolated execution
+- **Schema Validation** - Type-safe plugin configuration validation  
+- **Plugin Templates** - Code generation with customizable templates
+- **Development Tools** - Build, test, and package plugins easily
+- **Health Monitoring** - Real-time plugin health and performance metrics
 
-## Quick Start
+### Architecture Improvements
+- **Builder Pattern** - Fluent interface for plugin configuration
+- **Middleware Support** - Request/response transformation pipeline
+- **Lifecycle Hooks** - Custom hooks for plugin events
+- **Context Awareness** - Timeout and cancellation support
+- **Resource Monitoring** - Memory and CPU usage tracking
 
-### Basic Plugin
+## 📦 Installation
+
+```bash
+go get github.com/PortableSheep/delve-sdk@v2.0.0
+```
+
+## 🔧 Quick Start
+
+### Basic Plugin Creation
 
 ```go
 package main
 
 import (
+    "context"
     "log"
-    sdk "github.com/portablesheep/plugin-sdk"
+    
+    sdk "github.com/PortableSheep/delve-sdk"
 )
 
 func main() {
-    // Define plugin information
-    pluginInfo := &sdk.RegisterRequest{
-        Name:             "my-plugin",
-        Description:      "My awesome plugin",
-        Version:          "1.0.0",
-        CustomElementTag: "my-plugin",
-        UIComponentPath:  "index.js",
-        Icon:             "🚀",
-    }
+    // Create enhanced SDK
+    enhancedSDK := sdk.NewEnhancedSDK(sdk.SDKConfig{
+        SecurityLevel: sdk.SecurityLevelMedium,
+        DevMode:       true,
+        CacheEnabled:  true,
+    })
 
-    // Connect to host
-    plugin, err := sdk.Start(pluginInfo)
+    // Build plugin with enhanced features
+    plugin, err := enhancedSDK.NewPluginBuilder().
+        WithName("my-plugin").
+        WithDescription("My enhanced plugin").
+        WithVersion("1.0.0").
+        WithSecurity(sdk.SecurityPolicy{
+            Level: sdk.SecurityLevelMedium,
+            AllowedPermissions: []sdk.PermissionType{
+                sdk.PermissionUI,
+                sdk.PermissionStorage,
+            },
+        }).
+        WithValidation(&sdk.PluginSchema{
+            Version: "1.0",
+            Name:    "my-plugin-schema",
+            Rules: []sdk.ValidationRule{
+                {Field: "config.apiKey", Type: "string", Required: true},
+            },
+        }).
+        WithMetrics(true).
+        BuildEnhanced()
+
     if err != nil {
         log.Fatal(err)
     }
-    defer plugin.Close()
 
-    // Handle messages
-    plugin.Listen(func(messageType int, data []byte) {
-        log.Printf("Received: %s", string(data))
-    })
-}
-```
-
-### Plugin with Heartbeat & State Management
-
-```go
-package main
-
-import (
-    "encoding/json"
-    "log"
-    "os"
-    "time"
-    sdk "github.com/portablesheep/plugin-sdk"
-)
-
-type MyPlugin struct {
-    state map[string]interface{}
-}
-
-// Implement StateManager interface
-func (p *MyPlugin) SaveState() error {
-    data, _ := json.Marshal(p.state)
-    return os.WriteFile("plugin-state.json", data, 0644)
-}
-
-func (p *MyPlugin) GetState() interface{} {
-    return p.state
-}
-
-func main() {
-    myPlugin := &MyPlugin{
-        state: make(map[string]interface{}),
-    }
-
-    pluginInfo := &sdk.RegisterRequest{
-        Name:             "stateful-plugin",
-        Description:      "Plugin with state management",
-        Version:          "1.0.0",
-        CustomElementTag: "stateful-plugin",
-        UIComponentPath:  "index.js",
-    }
-
-    plugin, err := sdk.Start(pluginInfo)
-    if err != nil {
+    // Initialize and start
+    ctx := context.Background()
+    if err := plugin.Initialize(ctx); err != nil {
         log.Fatal(err)
     }
-    defer plugin.Close()
 
-    // Enable state management
-    plugin.SetStateManager(myPlugin)
+    if err := plugin.Start(ctx); err != nil {
+        log.Fatal(err)
+    }
 
-    // Start heartbeat (30s interval, 60s timeout)
-    plugin.StartHeartbeat(30*time.Second, 60*time.Second)
-
-    // Listen for messages
-    plugin.Listen(func(messageType int, data []byte) {
-        myPlugin.state["lastMessage"] = string(data)
-        log.Printf("Message saved to state: %s", string(data))
-    })
+    log.Println("Enhanced plugin started successfully!")
 }
 ```
 
-## Manifest (plugin.json) basics
+### Plugin Generation from Template
 
-Each plugin should include a `plugin.json` manifest at its root. Key fields:
-
-- info: id, name, version, description, icon
-- frontend.entry or runtime.frontend_entry: path to your web component bundle (relative to plugin root), e.g. `frontend/component.js`
-- runtime.executable: plugin binary name (if applicable)
-- config_schema: simple JSON-schema-like config used by the host settings UI
-
-See `plugin.schema.json` in this repo for the full schema. At minimum:
-
-{
-    "info": { "id": "my-plugin", "name": "My Plugin", "version": "v1.0.0" },
-    "frontend": { "entry": "frontend/component.js" },
-    "runtime": { "executable": "my-plugin" }
-}
-
-## Command handling (host RPC)
-
-Plugins can handle commands contributed via `plugin.json -> contributes.commands`.
-
-- Register one handler:
-    `plugin.OnCommand("my.command", func(ctx context.Context, args []any) (any, error) { /* ... */ })`
-- Or many at once:
-    `plugin.RegisterCommands(sdk.CommandMap{"my.command": handler})`
-
-Return any JSON-serializable value. Errors are sent back to the host.
-
-
-## API Reference
-
-### Plugin Registration
-
-#### `RegisterRequest`
 ```go
-type RegisterRequest struct {
-    Name             string `json:"name"`
-    Description      string `json:"description"`
-    Version          string `json:"version"`
-    CustomElementTag string `json:"customElementTag"`
-    UIComponentPath  string `json:"uiComponentPath"`
-    Icon             string `json:"icon"`
-}
-```
-
-- **Name**: Unique plugin identifier
-- **Description**: Human-readable description
-- **Version**: Plugin version (semver recommended)
-- **CustomElementTag**: HTML custom element tag for frontend
-- **UIComponentPath**: Path to frontend JavaScript file
-- **Icon**: Emoji or icon for UI display
-
-### Plugin Metadata (plugin.json)
-
-For plugins distributed through the registry, create a `plugin.json` file with additional metadata:
-
-```json
-{
-  "info": {
-    "id": "my-plugin",
-    "name": "My Plugin",
-    "version": "v1.0.0",
-    "description": "A comprehensive plugin description",
-    "author": "Your Name",
-    "license": "MIT",
-    "homepage": "https://github.com/user/plugin-repo",
-    "repository": "https://github.com/user/plugin-repo",
-    "icon": "🚀",
-    "screenshots": [
-      "https://raw.githubusercontent.com/user/plugin-repo/main/screenshots/overview.png",
-      "https://raw.githubusercontent.com/user/plugin-repo/main/screenshots/settings.png",
-      "https://raw.githubusercontent.com/user/plugin-repo/main/screenshots/features.png"
-    ],
-    "tags": ["productivity", "development", "ui"],
-    "category": "development-tools",
-    "min_delve_version": "v0.1.0"
-  },
-    "runtime": {
-        "executable": "my-plugin"
+// Generate a new Go utility plugin
+options := sdk.GenerationOptions{
+    Name:        "weather-widget",
+    Author:      "John Doe",
+    Description: "A weather widget plugin",
+    License:     "MIT",
+    Version:     "1.0.0",
+    OutputDir:   "./plugins",
+    Template:    "go-utility",
+    Variables: map[string]interface{}{
+        "APIEndpoint": "https://api.weather.com",
     },
-    "frontend": {
-        "entry": "frontend/component.js"
+}
+
+err := enhancedSDK.CreatePlugin(options)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+## 🛡️ Security & Sandboxing
+
+### Security Policies
+
+```go
+policy := sdk.SecurityPolicy{
+    Level: sdk.SecurityLevelHigh,
+    AllowedPermissions: []sdk.PermissionType{
+        sdk.PermissionStorage,
+        sdk.PermissionNetwork,
+    },
+    AllowedHosts: []string{"api.example.com"},
+    MaxMemory:    50 * 1024 * 1024, // 50MB
+    MaxCPU:      25.0,              // 25%
+    Timeout:     30 * time.Second,
+}
+
+sandbox, err := enhancedSDK.CreateSandbox("my-plugin", &policy)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Validate file access
+err = sandbox.CheckFileAccess("/home/user/data.txt", "read")
+if err != nil {
+    log.Printf("File access denied: %v", err)
+}
+
+// Validate network access
+err = sandbox.CheckNetworkAccess("api.example.com", 443)
+if err != nil {
+    log.Printf("Network access denied: %v", err)
+}
+```
+
+## 🔍 Enhanced Registry
+
+### Advanced Plugin Search
+
+```go
+filter := sdk.RegistrySearchFilter{
+    Category:     "utility",
+    Tags:         []string{"productivity", "tools"},
+    Author:       "john-doe",
+    UpdatedAfter: &time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+    SortBy:       "rating",
+    SortOrder:    "desc",
+    Limit:        20,
+}
+
+results, err := enhancedSDK.SearchPlugins(filter)
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, plugin := range results.Plugins {
+    fmt.Printf("Plugin: %s (Rating: %.1f, Downloads: %d)\\n",
+        plugin.Name, plugin.Metrics.Rating, plugin.Metrics.Downloads)
+}
+```
+
+### Plugin Metadata
+
+```go
+pluginInfo := &sdk.EnhancedPluginInfo{
+    Name:        "awesome-plugin",
+    Version:     "2.1.0",
+    Description: "An awesome plugin with enhanced features",
+    Author:      "jane-smith",
+    Category:    "productivity",
+    Tags:        []string{"automation", "workflow"},
+    Dependencies: []sdk.PluginDependency{
+        {Name: "base-utils", Version: "^1.0.0", Required: true},
+    },
+    Compatibility: sdk.PluginCompatibility{
+        MinHostVersion: "1.5.0",
+        Platforms:      []string{"linux", "darwin", "windows"},
+        Architectures:  []string{"amd64", "arm64"},
+    },
+    Security: sdk.SecurityInfo{
+        SecurityRating: "high",
+        Permissions:    []string{"storage", "network"},
+        Sandboxed:      true,
+    },
+}
+
+err := enhancedSDK.Registry().AddPlugin(pluginInfo)
+```
+
+## ✅ Schema Validation
+
+### Custom Validation Rules
+
+```go
+schema := &sdk.PluginSchema{
+    Version:     "1.0",
+    Name:        "api-client-schema",
+    Description: "Schema for API client plugins",
+    Rules: []sdk.ValidationRule{
+        {
+            Field:    "apiKey",
+            Type:     "string",
+            Required: true,
+            MinLength: &[]int{10}[0],
+            PatternStr: "^[a-zA-Z0-9]+$",
+        },
+        {
+            Field: "timeout",
+            Type:  "number",
+            Min:   &[]float64{1}[0],
+            Max:   &[]float64{300}[0],
+        },
+        {
+            Field: "retries",
+            Type:  "integer",
+            CustomValidator: func(val interface{}) error {
+                if retries, ok := val.(int); ok && retries < 0 {
+                    return fmt.Errorf("retries must be non-negative")
+                }
+                return nil
+            },
+        },
+    },
+}
+
+// Register schema
+enhancedSDK.Validator().RegisterSchema("api-client", schema)
+
+// Validate plugin config
+config := map[string]interface{}{
+    "apiKey":  "abc123xyz789",
+    "timeout": 30.0,
+    "retries": 3,
+}
+
+errors := enhancedSDK.ValidatePlugin("api-client", config)
+if len(errors) > 0 {
+    for _, err := range errors {
+        fmt.Printf("Validation error: %s - %s\\n", err.Field, err.Message)
     }
 }
 ```
 
-#### Screenshots
+## 🛠️ Development Tools
 
-Screenshots help users understand your plugin's functionality:
+### Project Initialization
 
-**Best Practices:**
-- Use PNG format for best quality
-- Minimum resolution: 1200x800 pixels
-- Maximum file size: 500KB per image
-- Show real data when possible (avoid empty states)
-- Include 2-4 screenshots showing key features
-- Use consistent browser/window sizing
+```bash
+# Using the CLI (would need to be built separately)
+delve-sdk init my-plugin --template=go-utility --author="John Doe"
+```
 
-**Screenshot URLs:**
-- Host screenshots in your plugin repository
-- Use GitHub raw URLs for reliability
-- Example: `https://raw.githubusercontent.com/user/repo/main/screenshots/image.png`
+Or programmatically:
 
-**What to Screenshot:**
-1. **Main interface** - Primary plugin view
-2. **Key features** - Important functionality in action
-3. **Settings/Configuration** - Plugin configuration options
-4. **Different states** - Various plugin modes or views
+```go
+devTools, err := enhancedSDK.DevTools("./my-plugin")
+if err != nil {
+    log.Fatal(err)
+}
 
-Screenshots are displayed in:
-- Plugin Manager (Delve application)
-- Plugin Store interface
-- Registry website
-- Plugin documentation
+// Initialize project
+err = devTools.InitProject(sdk.GenerationOptions{
+    Name:        "my-plugin",
+    Author:      "John Doe",
+    Description: "My awesome plugin",
+    Template:    "go-utility",
+    License:     "MIT",
+    Version:     "1.0.0",
+})
+```
 
-### Core Methods
+### Building and Testing
 
-#### `Start(pluginInfo *RegisterRequest) (*Plugin, error)`
-Establishes connection to Delve host and registers the plugin.
+```go
+// Build plugin
+buildResult, err := devTools.Build("linux")
+if err != nil {
+    log.Fatal(err)
+}
 
-#### `Plugin.Listen(handler func(messageType int, data []byte))`
-Starts message processing loop. **This method blocks** until connection closes.
+if buildResult.Success {
+    fmt.Printf("Build successful in %v\\n", buildResult.Duration)
+    fmt.Printf("Output files: %v\\n", buildResult.OutputFiles)
+} else {
+    fmt.Printf("Build failed: %v\\n", buildResult.Errors)
+}
 
-#### `Plugin.Close()`
-Gracefully closes the connection to the host.
+// Run tests
+testResult, err := devTools.Test()
+if err != nil {
+    log.Fatal(err)
+}
 
-### Heartbeat System
+fmt.Printf("Tests: %d passed, %d failed (%.1f%% coverage)\\n",
+    testResult.Passed, testResult.Failed, testResult.Coverage)
 
-#### `Plugin.SetStateManager(sm StateManager)`
-Sets a state manager for graceful shutdown with state saving.
+// Package for distribution
+packageResult, err := devTools.Package()
+if err != nil {
+    log.Fatal(err)
+}
 
-#### `Plugin.StartHeartbeat(interval, timeout time.Duration)`
-Starts heartbeat monitoring:
-- **interval**: How often to send heartbeats to host
-- **timeout**: How long to wait for host response before shutdown
+if packageResult.Success {
+    fmt.Printf("Package created: %s (%.2f MB)\\n",
+        packageResult.FilePath, float64(packageResult.Size)/1024/1024)
+}
+```
 
-**Recommended settings:**
-- Interval: 30 seconds
-- Timeout: 60 seconds
+## 📊 Health Monitoring
 
-### State Management
+```go
+// Plugin automatically reports health status
+status := plugin.Status()
+fmt.Printf("Plugin Status: %s\\n", status.State)
+fmt.Printf("Health: %s\\n", status.Health)
+fmt.Printf("Uptime: %v\\n", status.Uptime)
+fmt.Printf("Memory Usage: %d MB\\n", status.Metrics["memoryUsage"])
 
-Implement the `StateManager` interface for automatic state persistence:
+// Custom health check
+plugin.RegisterHook("health", func(ctx context.Context, data interface{}) error {
+    // Custom health validation logic
+    if !isServiceReachable() {
+        return fmt.Errorf("external service unreachable")
+    }
+    return nil
+})
+```
+
+## 🎨 Plugin Templates
+
+### Available Templates
+
+- **go-utility**: Full-featured Go plugin with frontend
+- **theme**: CSS theme plugin
+- **integration**: API integration plugin
+- **dashboard**: Data visualization plugin
+
+### Custom Templates
+
+```go
+customTemplate := &sdk.PluginTemplate{
+    Name:        "custom-api",
+    Description: "Custom API integration template",
+    Type:        "integration",
+    Language:    "go",
+    Files: []sdk.TemplateFile{
+        {
+            Path:     "main.go",
+            Template: true,
+            Content:  "// Custom template content with {{.Variables}}",
+        },
+    },
+    Variables: map[string]interface{}{
+        "APIVersion": "v1",
+    },
+}
+
+enhancedSDK.Generator().RegisterTemplate(customTemplate)
+```
+
+
+## 🔧 Configuration
+
+### SDK Configuration
+
+```go
+config := sdk.SDKConfig{
+    RegistryURL:   "https://registry.delve.sh",
+    SecurityLevel: sdk.SecurityLevelMedium,
+    CacheEnabled:  true,
+    DevMode:       false,
+    LogLevel:      sdk.LogLevelInfo,
+    CustomTemplates: map[string]*sdk.PluginTemplate{
+        "my-template": customTemplate,
+    },
+}
+
+sdk := sdk.NewEnhancedSDK(config)
+```
+
+## 📚 API Reference
+
+### Core Types
+
+- `EnhancedSDK` - Main SDK interface
+- `EnhancedPlugin` - Enhanced plugin interface with lifecycle methods
+- `SecurityManager` - Handles security policies and sandboxing
+- `EnhancedRegistry` - Advanced plugin registry with search and metadata
+- `SchemaValidator` - Plugin configuration validation
+- `PluginGenerator` - Template-based plugin generation
+- `DevTools` - Development and build tools
+
+### Security Types
+
+- `SecurityLevel` - Security level enumeration
+- `SecurityPolicy` - Security policy configuration
+- `Permission` - Permission request structure
+- `Sandbox` - Isolated execution environment
+
+### Registry Types
+
+- `EnhancedPluginInfo` - Complete plugin metadata
+- `RegistrySearchFilter` - Advanced search filtering
+- `PluginMetrics` - Usage and performance metrics
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- Documentation: [https://docs.delve.sh/sdk](https://docs.delve.sh/sdk)
+- Issues: [GitHub Issues](https://github.com/PortableSheep/delve-sdk/issues)
+- Community: [Discord Server](https://discord.gg/delve)
+
+## 🗺️ Roadmap
+
+- [ ] Visual plugin builder interface
+- [ ] Plugin marketplace integration
+- [ ] Advanced analytics and monitoring
+- [ ] Multi-language SDK support (Python, JavaScript, Rust)
+- [ ] Plugin dependency management system
+- [ ] Automated security scanning
+- [ ] Performance profiling tools
+- [ ] Plugin migration utilities
 
 ```go
 type StateManager interface {
@@ -398,6 +590,79 @@ plugin.Listen(func(messageType int, data []byte) {
 ```
 
 ## Plugin Lifecycle
+
+## UI Contributions (Sidebar & Footer)
+
+Plugins can extend the Delve UI with sidebar items and footer widgets, and update them live at runtime.
+
+Helpers on Plugin:
+- `SetUIContributions(c UIContributions)` – replace all sidebar/footer entries
+- `UpsertSidebarItem(item SidebarItem)` – insert or replace a sidebar item and emit an update
+- `UpsertFooterWidget(w FooterWidget)` – insert or replace a footer widget and emit an update
+- `SetFooterBadgeCount(identifier string, count int)` – update a footer widget badge by ElementTag or Title
+
+Types:
+```go
+type CommandRef struct {
+    ID   string        `json:"id"`
+    Args []interface{} `json:"args,omitempty"`
+}
+
+type SidebarItem struct {
+    ID             string      `json:"id"`
+    Title          string      `json:"title"`
+    Icon           string      `json:"icon,omitempty"`
+    ElementTag     string      `json:"elementTag,omitempty"`
+    ComponentPath  string      `json:"componentPath,omitempty"`
+    Order          int         `json:"order,omitempty"`
+    OnClickCommand *CommandRef `json:"onClickCommand,omitempty"`
+}
+
+type FooterWidget struct {
+    ElementTag     string      `json:"elementTag,omitempty"`
+    ComponentPath  string      `json:"componentPath,omitempty"`
+    Order          int         `json:"order,omitempty"`
+    Icon           string      `json:"icon,omitempty"`
+    Title          string      `json:"title,omitempty"`
+    BadgeCount     int         `json:"badgeCount,omitempty"`
+    OnClickCommand *CommandRef `json:"onClickCommand,omitempty"`
+}
+
+type UIContributions struct {
+    Sidebar []SidebarItem  `json:"sidebar,omitempty"`
+    Footer  []FooterWidget `json:"footer,omitempty"`
+}
+```
+
+Minimal usage:
+```go
+// During registration
+pluginInfo := &sdk.RegisterRequest{
+    Name:             "my-plugin",
+    Description:      "Demo",
+    CustomElementTag: "my-plugin",
+    UiComponentPath:  "frontend/component.js",
+}
+plugin, _ := sdk.Start(pluginInfo)
+
+// Contribute a sidebar item and a footer icon
+_ = plugin.SetUIContributions(sdk.UIContributions{
+    Sidebar: []sdk.SidebarItem{
+        { Title: "My Plugin", ElementTag: "my-plugin", ComponentPath: "frontend/component.js", OnClickCommand: &sdk.CommandRef{ID: "my-plugin.open"} },
+    },
+    Footer: []sdk.FooterWidget{
+        { Title: "My Plugin", Icon: "mdi:rocket", OnClickCommand: &sdk.CommandRef{ID: "my-plugin.open"} },
+    },
+})
+
+// Update badge later (e.g., unread count)
+_ = plugin.SetFooterBadgeCount("My Plugin", 5)
+
+// Default click handler returns an activation hint for the frontend
+plugin.OnCommand("my-plugin.open", func(ctx context.Context, args []any) (any, error) {
+    return map[string]any{"activateUI": map[string]any{"plugin": "my-plugin", "tag": "my-plugin"}}, nil
+})
+```
 
 1. **Startup**: Plugin connects and registers with host
 2. **Running**: Plugin processes messages and performs work

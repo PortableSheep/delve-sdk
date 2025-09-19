@@ -45,6 +45,37 @@ type Plugin struct {
 	// event handling
 	eventHandlers map[string][]func(any)
 	eventMutex    sync.RWMutex
+	// cached UI contributions (to allow partial, ergonomic updates)
+	uiContrib UIContributions
+	uiMutex   sync.Mutex
+}
+
+// UI contribution types (mirrors host expectation, but kept minimal and independent)
+type CommandRef struct {
+	ID   string        `json:"id"`
+	Args []interface{} `json:"args,omitempty"`
+}
+type SidebarItem struct {
+	ID             string      `json:"id"`
+	Title          string      `json:"title"`
+	Icon           string      `json:"icon,omitempty"`
+	ElementTag     string      `json:"elementTag,omitempty"`
+	ComponentPath  string      `json:"componentPath,omitempty"`
+	Order          int         `json:"order,omitempty"`
+	OnClickCommand *CommandRef `json:"onClickCommand,omitempty"`
+}
+type FooterWidget struct {
+	ElementTag     string      `json:"elementTag,omitempty"`
+	ComponentPath  string      `json:"componentPath,omitempty"`
+	Order          int         `json:"order,omitempty"`
+	Icon           string      `json:"icon,omitempty"`
+	Title          string      `json:"title,omitempty"`
+	BadgeCount     int         `json:"badgeCount,omitempty"`
+	OnClickCommand *CommandRef `json:"onClickCommand,omitempty"`
+}
+type UIContributions struct {
+	Sidebar []SidebarItem  `json:"sidebar,omitempty"`
+	Footer  []FooterWidget `json:"footer,omitempty"`
 }
 
 // Emit sends an arbitrary event envelope to the host. The host can choose to
@@ -65,6 +96,87 @@ func (p *Plugin) Emit(event string, payload any) error {
 		return err
 	}
 	return p.conn.WriteMessage(websocket.TextMessage, b)
+}
+
+// UpdateUIContributions sends an update payload to the host to modify UI contributions live.
+// Host will normalize paths and re-emit aggregated UI contributions to frontend.
+func (p *Plugin) UpdateUIContributions(update UIContributions) error {
+	if p == nil || p.conn == nil {
+		return fmt.Errorf("plugin connection not initialised")
+	}
+	env := map[string]any{
+		"type":          "uiContributions/update",
+		"contributions": update,
+	}
+	b, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return p.conn.WriteMessage(websocket.TextMessage, b)
+}
+
+// SetUIContributions replaces the cached contributions and sends them to the host.
+func (p *Plugin) SetUIContributions(c UIContributions) error {
+	p.uiMutex.Lock()
+	p.uiContrib = c
+	p.uiMutex.Unlock()
+	return p.UpdateUIContributions(c)
+}
+
+// UpsertFooterWidget inserts or replaces a footer widget in the cached contributions and sends update.
+// Matching preference: ElementTag (if provided), else Title.
+func (p *Plugin) UpsertFooterWidget(w FooterWidget) error {
+	p.uiMutex.Lock()
+	defer p.uiMutex.Unlock()
+	replaced := false
+	for i := range p.uiContrib.Footer {
+		cur := p.uiContrib.Footer[i]
+		if (w.ElementTag != "" && cur.ElementTag == w.ElementTag) || (w.ElementTag == "" && w.Title != "" && cur.Title == w.Title) {
+			p.uiContrib.Footer[i] = w
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		p.uiContrib.Footer = append(p.uiContrib.Footer, w)
+	}
+	return p.UpdateUIContributions(UIContributions{Footer: p.uiContrib.Footer})
+}
+
+// SetFooterBadgeCount finds a footer widget and updates its badge count.
+// It identifies the widget by ElementTag when provided; otherwise by Title.
+func (p *Plugin) SetFooterBadgeCount(identifier string, count int) error {
+	p.uiMutex.Lock()
+	defer p.uiMutex.Unlock()
+	for i := range p.uiContrib.Footer {
+		if p.uiContrib.Footer[i].ElementTag == identifier || (p.uiContrib.Footer[i].ElementTag == "" && p.uiContrib.Footer[i].Title == identifier) {
+			p.uiContrib.Footer[i].BadgeCount = count
+			return p.UpdateUIContributions(UIContributions{Footer: p.uiContrib.Footer})
+		}
+	}
+	// if not found, create a minimal icon badge with title as identifier
+	p.uiContrib.Footer = append(p.uiContrib.Footer, FooterWidget{Title: identifier, BadgeCount: count})
+	return p.UpdateUIContributions(UIContributions{Footer: p.uiContrib.Footer})
+}
+
+// UpsertSidebarItem inserts or replaces a sidebar item in the cached contributions and sends update.
+// Matching preference: ID (if provided), else ElementTag, else Title.
+func (p *Plugin) UpsertSidebarItem(item SidebarItem) error {
+	p.uiMutex.Lock()
+	defer p.uiMutex.Unlock()
+	replaced := false
+	for i := range p.uiContrib.Sidebar {
+		cur := p.uiContrib.Sidebar[i]
+		if (item.ID != "" && cur.ID == item.ID) || (item.ID == "" && item.ElementTag != "" && cur.ElementTag == item.ElementTag) || (item.ID == "" && item.ElementTag == "" && item.Title != "" && cur.Title == item.Title) {
+			p.uiContrib.Sidebar[i] = item
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		p.uiContrib.Sidebar = append(p.uiContrib.Sidebar, item)
+	}
+	return p.UpdateUIContributions(UIContributions{Sidebar: p.uiContrib.Sidebar})
 }
 
 // Start establishes a WebSocket connection with the host and registers the plugin.
