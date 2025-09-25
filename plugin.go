@@ -3,10 +3,8 @@ package sdk
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -180,51 +178,25 @@ func (p *Plugin) UpsertSidebarItem(item SidebarItem) error {
 }
 
 // Start establishes a WebSocket connection with the host and registers the plugin.
+// Now uses enhanced features by default
 func Start(pluginInfo *RegisterRequest) (*Plugin, error) {
-	wsPort := flag.Int("ws-port", 0, "WebSocket server port of the main application")
-	flag.Parse()
-
-	if *wsPort == 0 {
-		return nil, fmt.Errorf("host WebSocket port not provided via --ws-port flag")
+	// Convert to enhanced registration
+	enhanced := &EnhancedRegisterRequest{
+		Name:             pluginInfo.Name,
+		Description:      pluginInfo.Description,
+		UIComponentPath:  pluginInfo.UIComponentPath,
+		CustomElementTag: pluginInfo.CustomElementTag,
 	}
 
-	// Construct the WebSocket URL.
-	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("127.0.0.1:%d", *wsPort), Path: "/ws"}
-	log.Printf("Connecting to host at %s", u.String())
-
-	// Dial the host.
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to host WebSocket: %w", err)
+	// Convert contributions if present
+	if pluginInfo.Contributions != nil {
+		enhanced.Contributions = &EnhancedUIContributions{
+			Sidebar: pluginInfo.Contributions.Sidebar,
+			Footer:  pluginInfo.Contributions.Footer,
+		}
 	}
 
-	// Marshal the registration info.
-	payload, err := json.Marshal(pluginInfo)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to marshal plugin info: %w", err)
-	}
-
-	// Send the registration message.
-	if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to send registration message: %w", err)
-	}
-
-	log.Println("Plugin successfully sent registration request.")
-
-	plugin := &Plugin{
-		conn:            conn,
-		pendingRequests: make(map[string]chan StorageResponse),
-		hostPending:     make(map[string]chan HostResponse),
-		heartbeatStop:   make(chan struct{}),
-		heartbeatDone:   make(chan struct{}),
-		lastHeartbeat:   time.Now(),
-		commandHandlers: make(map[string]CommandHandler),
-		eventHandlers:   make(map[string][]func(any)),
-	}
-
-	return plugin, nil
+	return StartEnhanced(enhanced)
 }
 
 // CommandHandler is a function that handles a command from the host.
