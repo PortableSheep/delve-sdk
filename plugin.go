@@ -48,34 +48,6 @@ type Plugin struct {
 	uiMutex   sync.Mutex
 }
 
-// UI contribution types (mirrors host expectation, but kept minimal and independent)
-type CommandRef struct {
-	ID   string        `json:"id"`
-	Args []interface{} `json:"args,omitempty"`
-}
-type SidebarItem struct {
-	ID             string      `json:"id"`
-	Title          string      `json:"title"`
-	Icon           string      `json:"icon,omitempty"`
-	ElementTag     string      `json:"elementTag,omitempty"`
-	ComponentPath  string      `json:"componentPath,omitempty"`
-	Order          int         `json:"order,omitempty"`
-	OnClickCommand *CommandRef `json:"onClickCommand,omitempty"`
-}
-type FooterWidget struct {
-	ElementTag     string      `json:"elementTag,omitempty"`
-	ComponentPath  string      `json:"componentPath,omitempty"`
-	Order          int         `json:"order,omitempty"`
-	Icon           string      `json:"icon,omitempty"`
-	Title          string      `json:"title,omitempty"`
-	BadgeCount     int         `json:"badgeCount,omitempty"`
-	OnClickCommand *CommandRef `json:"onClickCommand,omitempty"`
-}
-type UIContributions struct {
-	Sidebar []SidebarItem  `json:"sidebar,omitempty"`
-	Footer  []FooterWidget `json:"footer,omitempty"`
-}
-
 // Emit sends an arbitrary event envelope to the host. The host can choose to
 // broadcast this to frontend listeners for the plugin UI. The envelope shape:
 // {"type":"event","event":"<eventName>","plugin":"<pluginName>","data":<payload>}
