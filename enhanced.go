@@ -241,12 +241,13 @@ func StartEnhanced(pluginInfo *EnhancedRegisterRequest) (*Plugin, error) {
 		conn:            conn,
 		pendingRequests: make(map[string]chan StorageResponse),
 		hostPending:     make(map[string]chan HostResponse),
-		heartbeatStop:   make(chan struct{}),
-		heartbeatDone:   make(chan struct{}),
 		lastHeartbeat:   time.Now(),
 		commandHandlers: make(map[string]CommandHandler),
 		eventHandlers:   make(map[string][]func(any)),
 	}
+
+	// Start default heartbeat to keep the connection healthy
+	plugin.StartHeartbeat(5*time.Second, 20*time.Second)
 
 	return plugin, nil
 }

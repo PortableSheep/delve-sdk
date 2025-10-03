@@ -26,17 +26,19 @@ type StateManager interface {
 
 // Plugin represents a connection to the host application.
 type Plugin struct {
-	conn            *websocket.Conn
-	pendingRequests map[string]chan StorageResponse
-	hostPending     map[string]chan HostResponse
-	requestsMutex   sync.RWMutex
-	requestCounter  int
-	counterMutex    sync.Mutex
-	stateManager    StateManager
-	heartbeatStop   chan struct{}
-	heartbeatDone   chan struct{}
-	lastHeartbeat   time.Time
-	heartbeatMutex  sync.RWMutex
+	conn             *websocket.Conn
+	pendingRequests  map[string]chan StorageResponse
+	hostPending      map[string]chan HostResponse
+	requestsMutex    sync.RWMutex
+	requestCounter   int
+	counterMutex     sync.Mutex
+	stateManager     StateManager
+	heartbeatStop    chan struct{}
+	heartbeatDone    chan struct{}
+	heartbeatControl sync.Mutex
+	heartbeatRunning bool
+	lastHeartbeat    time.Time
+	heartbeatMutex   sync.RWMutex
 	// command handling
 	commandHandlers map[string]CommandHandler
 	commandMutex    sync.RWMutex
@@ -201,19 +203,34 @@ func (p *Plugin) SetStateManager(sm StateManager) {
 
 // StartHeartbeat starts the heartbeat mechanism
 func (p *Plugin) StartHeartbeat(interval time.Duration, timeout time.Duration) {
-	go p.runHeartbeat(interval, timeout)
+	// Ensure any previous heartbeat loop is stopped
+	p.stopHeartbeat()
+
+	p.heartbeatControl.Lock()
+	p.heartbeatStop = make(chan struct{})
+	p.heartbeatDone = make(chan struct{})
+	p.heartbeatRunning = true
+	stopCh := p.heartbeatStop
+	doneCh := p.heartbeatDone
+	p.heartbeatControl.Unlock()
+
+	p.heartbeatMutex.Lock()
+	p.lastHeartbeat = time.Now()
+	p.heartbeatMutex.Unlock()
+
+	go p.runHeartbeat(stopCh, doneCh, interval, timeout)
 }
 
 // runHeartbeat runs the heartbeat loop
-func (p *Plugin) runHeartbeat(interval time.Duration, timeout time.Duration) {
-	defer close(p.heartbeatDone)
+func (p *Plugin) runHeartbeat(stopCh <-chan struct{}, doneCh chan<- struct{}, interval time.Duration, timeout time.Duration) {
+	defer close(doneCh)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-p.heartbeatStop:
+		case <-stopCh:
 			log.Println("Heartbeat stopped")
 			return
 		case <-ticker.C:
@@ -416,20 +433,29 @@ func (p *Plugin) Listen(handler func(messageType int, data []byte)) {
 
 // stopHeartbeat stops the heartbeat mechanism
 func (p *Plugin) stopHeartbeat() {
-	select {
-	case <-p.heartbeatStop:
-		// Already stopped
+	p.heartbeatControl.Lock()
+	if !p.heartbeatRunning {
+		p.heartbeatControl.Unlock()
 		return
-	default:
-		close(p.heartbeatStop)
 	}
+	stopCh := p.heartbeatStop
+	doneCh := p.heartbeatDone
+	// Mark as no longer running before releasing the lock to wait
+	p.heartbeatRunning = false
+	p.heartbeatControl.Unlock()
 
-	// Wait for heartbeat goroutine to finish
+	close(stopCh)
+
 	select {
-	case <-p.heartbeatDone:
+	case <-doneCh:
 	case <-time.After(5 * time.Second):
 		log.Println("Heartbeat stop timeout")
 	}
+
+	p.heartbeatControl.Lock()
+	p.heartbeatStop = nil
+	p.heartbeatDone = nil
+	p.heartbeatControl.Unlock()
 }
 
 // generateRequestID generates a unique request ID
