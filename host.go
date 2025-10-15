@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // HostRequest represents a generic request to the host (non-storage, non-command)
@@ -45,7 +47,7 @@ func (p *Plugin) sendHostRequest(op string, data map[string]any) (*HostResponse,
 	if err != nil {
 		return nil, err
 	}
-	if err := p.conn.WriteMessage(1, b); err != nil { // 1 = TextMessage
+	if err := p.writeMessage(websocket.TextMessage, b); err != nil {
 		return nil, err
 	}
 	select {

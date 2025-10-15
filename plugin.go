@@ -46,8 +46,31 @@ type Plugin struct {
 	eventHandlers map[string][]func(any)
 	eventMutex    sync.RWMutex
 	// cached UI contributions (to allow partial, ergonomic updates)
-	uiContrib UIContributions
-	uiMutex   sync.Mutex
+	uiContrib  UIContributions
+	uiMutex    sync.Mutex
+	writeMutex sync.Mutex
+}
+
+func (p *Plugin) writeMessage(messageType int, data []byte) error {
+	return p.writeMessageWithDeadline(messageType, data, 0)
+}
+
+func (p *Plugin) writeMessageWithDeadline(messageType int, data []byte, deadline time.Duration) error {
+	if p == nil || p.conn == nil {
+		return fmt.Errorf("plugin connection not initialised")
+	}
+
+	p.writeMutex.Lock()
+	defer p.writeMutex.Unlock()
+
+	if deadline > 0 {
+		if err := p.conn.SetWriteDeadline(time.Now().Add(deadline)); err != nil {
+			return err
+		}
+		defer p.conn.SetWriteDeadline(time.Time{})
+	}
+
+	return p.conn.WriteMessage(messageType, data)
 }
 
 // Emit sends an arbitrary event envelope to the host. The host can choose to
@@ -67,7 +90,7 @@ func (p *Plugin) Emit(event string, payload any) error {
 	if err != nil {
 		return err
 	}
-	return p.conn.WriteMessage(websocket.TextMessage, b)
+	return p.writeMessage(websocket.TextMessage, b)
 }
 
 // UpdateUIContributions sends an update payload to the host to modify UI contributions live.
@@ -84,7 +107,7 @@ func (p *Plugin) UpdateUIContributions(update UIContributions) error {
 	if err != nil {
 		return err
 	}
-	return p.conn.WriteMessage(websocket.TextMessage, b)
+	return p.writeMessage(websocket.TextMessage, b)
 }
 
 // SetUIContributions replaces the cached contributions and sends them to the host.
@@ -246,9 +269,7 @@ func (p *Plugin) runHeartbeat(stopCh <-chan struct{}, doneCh chan<- struct{}, in
 				continue
 			}
 
-			// Set write deadline
-			p.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if err := p.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			if err := p.writeMessageWithDeadline(websocket.TextMessage, data, 5*time.Second); err != nil {
 				log.Printf("Failed to send heartbeat: %v", err)
 				p.gracefulShutdown("heartbeat send failed")
 				return
@@ -417,7 +438,7 @@ func (p *Plugin) Listen(handler func(messageType int, data []byte)) {
 						reply["result"] = result
 					}
 					if b, err := json.Marshal(reply); err == nil {
-						_ = p.conn.WriteMessage(websocket.TextMessage, b)
+						_ = p.writeMessage(websocket.TextMessage, b)
 					}
 					continue
 				}
@@ -490,7 +511,7 @@ func (p *Plugin) sendStorageRequest(req StorageRequest) (*StorageResponse, error
 		return nil, fmt.Errorf("failed to marshal storage request: %w", err)
 	}
 
-	if err := p.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+	if err := p.writeMessage(websocket.TextMessage, data); err != nil {
 		return nil, fmt.Errorf("failed to send storage request: %w", err)
 	}
 
@@ -513,7 +534,7 @@ func (p *Plugin) Close() {
 
 	if p.conn != nil {
 		// Politely tell the server we're closing the connection.
-		err := p.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		err := p.writeMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		if err != nil {
 			log.Printf("Error sending close message: %v", err)
 		}
